@@ -1,8 +1,8 @@
-# Building Gravity Chain: A High-Performance EVM Layer 1 Powered by Grevm and Gravity SDK
+# Building Gravity Chain: A High-Performance EVM Layer-1 Powered by Grevm and Gravity SDK
 
 ## Abstract
 
-**Gravity Chain** is a pioneering high-performance EVM-compatible Layer 1 blockchain designed for
+**Gravity Chain** is a pioneering high-performance EVM-compatible layer-1 blockchain designed for
 mass adoption and an omnichain future. Offering **1 gigagas per second throughput**, **sub-second
 finality**, and **restaking-powered PoS security**, Gravity Chain addresses the scalability and
 performance challenges of modern blockchain applications. At its core, Gravity Chain is built using
@@ -25,7 +25,7 @@ near-instantaneous finality for Gravity Intent Protocol, with restaking-powered 
 
 The development of Gravity toolkits was driven by the challenges we encountered with Galxe, a
 leading Web3 application offering a suite of services such as loyalty points, campaign NFTs, token
-rewards, zk-Identity, and omnichain smart savings. Galxe's rapid growth has resulted in a
+rewards, zk-identity, and omnichain smart savings. Galxe's rapid growth has resulted in a
 significant volume of transactions, with its loyalty points system processing over 51.2 transactions
 per second and token rewards campaigns processing over 32.1 transactions per second on average. As
 we move towards decentralizing Galxe's backend, transitioning all its use cases to an EVM blockchain
@@ -158,11 +158,12 @@ blockchains.
 - Network and mempool
   - Transaction dissemination (Quorum store)， P2P network，mempool，state sync and etc.
 - Consensus: AptosBFT
-- Native staking & Restaking module
+- Native staking & re-staking module
 - Execution layer adaptors
+  - Any execution runtime.
   - Grevm (Gravity EVM), a fork of reth with parallel execution and transaction dissemination
-    support
-  - Reth
+    support.
+  - Reth.
 
 ### Pipelined architecture
 
@@ -187,105 +188,45 @@ management, and state synchronization.
 
 <!-- TODO: Gravity supports any runtime -->
 
-The execution layer in Gravity SDK is built around reth, enabling full Ethereum Virtual Machine
-(EVM) compatibility. This integration opens Gravity SDK to the Ethereum ecosystem, including
-wallets, decentralized applications (DApps), and developer tools, while maintaining the high
-performance of a L1 network.
+Although Gravity SDK is designed to support any execution runtime, because Gravity chain is an EVM
+compatible chain, the SDK offers primary support around reth and Grevm, enabling full Ethereum
+Virtual Machine (EVM) compatibility. This integration opens Gravity SDK to the Ethereum ecosystem,
+including wallets, decentralized applications (DApps), and developer tools, while maintaining fast
+finality as a L1 network.
 
-To further enhance performance and create a ‘real-time’ blockchain, we are developing four major
-optimizations for reth, see the section below for more details.
+We are developing four major optimizations for reth, see the section below for more details.
 
 - Pipelined block process
 - Parallel execution
-  - Using Block-STM with hint-driven partition
+  - Using Block-STM with data-dependency-driven heuristics to optimize parallel execution.
 - Gravity ledger layer
   - The Fully parallelized state commitment enables rapid State Commitment generation.
   - The Gravity DB, integrated with the pipeline and asynchronous I/O, ensures optimized data
     persistence without blocking other processes. Along with advanced encoding, compression, and
     indexing techniques to implement a more efficient caching strategy, we plan to introduce
-    database sharding, featuring a version-based key that circumvents heavy I/O brought about by the
+    database sharding, featuring a version-based key that circumvents heavy I/O brought by the
     randomness of a pervading hash-based key.
 
 ## Innovating with reth
 
 ### Grevm (Gravity EVM) - Parallel EVM Execution
 
-The parallel Ethereum Virtual Machine (EVM) offers the potential to unlock the scalability potential
-by facilitating parallel transaction execution. This approach takes advantage of the fact that
-independent transactions can be processed simultaneously, significantly boosting throughput by by
-multithreading.
+> Grevm has been open-sourced and is available on GitHub. Please read its
+> [README](https://github.com/Galxe/grevm/blob/main/README.md) for more details.
 
-The core idea involves running multiple EVM instances concurrently on different threads. These
-instances execute batches of transactions independently, and their results are merged into a final
-state update.
+[Grevm (Gravity EVM)](https://github.com/Galxe/grevm) is an open-source, parallel EVM runtime based
+on [revm](https://github.com/bluealloy/revm). Grevm's algorithm is inspired by
+[BlockSTM](https://arxiv.org/abs/2203.06871), and we've enhanced it by incorporating a transaction
+data dependency graph derived from simulation results. This mechanism enables more effective
+scheduling for parallel execution, minimizing transaction re-executions.
 
-1. **Transaction Scheduling and Dependency Management:** Efficiently partition transactions across
-   multiple EVM instances while accurately detecting and handling dependencies to ensure
-   conflict-less execution.
-2. **Optimizing Parallelism:** Develop strategies to maximize the parallel processing of independent
-   transactions.
-3. **Efficient State Loading and Merging:** Providing non-blocking ledger views to each EVM process
-   instance, significantly enhancing the concurrency of Parallel EVM.
-
-![Architecture of Parallel EVM Framework of Gravity](assets/image.png)
-
-**Architecture of Parallel EVM Framework of Gravity**
-
-We retains the workflow of Block-STM and enhances it to develop the Parallel EVM Framework suitable
-for EVM, with the following technical innovations:
-
-1. Efficient transaction dependencies analysis
-2. Deterministic parallel execution algorithm
-3. Multi-round transactional cache manager
-
-**Efficient transaction dependencies analysis**
-
-For transactions in a block, by introducing speculated read/write sets, we can form a transaction
-dependency graph to partition them into different batches. As illustrated in the diagram, batches
-will be dispatched to multiple execution instances and leverage the multi-core advantages of CPUs to
-achieve efficient transaction processing.
-
-![Tx Dependencies Analysis](assets/Untitled.png)
-
-Tx Dependencies Analysis
-
-**Deterministic Transaction Algorithm**
-
-Each round categorizes transactions into three states: `Finalized`, `Conflicting`, and `Pending`.
-Only transactions that have all preceding transactions finalized and are conflict-free can be
-considered `Finalized`. For each round, the algorithm dynamically re-partitions the Parallel
-Execution Instances based on the `Conflicting`and `Pending` transaction set from the previous round.
-With each successive round, the Read-Write set becomes more precise, allowing convergence within a
-limited time. In extreme cases, after K rounds, the process may fall back to serial execution to
-prevent the worst case scenarios where the theoretical time complexity becomes O(n^2). However, by
-that point, most memory slots used by transactions are already loaded in memory, making serial
-execution highly efficient.
-
-For `Pending` transactions, we can avoid redundant execution by reusing read-write set information,
-as illustrated in the flowchart below:
-
-![Workflow of Tx Re-Execution](assets/Untitled%201.png)
-
-Workflow of Tx Re-Execution
-
-**Multi-Round Cache Manager**
-
-We provide a transactional database manager for each round, aiming to quickly offer a precise Ledger
-Base View for the Parallel Execution of each round while leveraging the async I/O capabilities of
-the database.
-
-![Diagram of Multi-Round Cache Manager](assets/Untitled%202.png)
-
-Diagram of Multi-Round Cache Manager
-
-As shown in the diagram, the `Finalized` Tx of each round will be merged into the Base View, while
-the `Conflicting` and `Pending` Tx will continue to execute based on this new Base View.
-
-**The last round of Base View is the Finalized View of the block.**
-
-![Diagram of Merge Definite View](assets/Untitled%203.png)
-
-Diagram of Merge Definite View
+In our benchmark, Grevm stands as the **fastest** open-source parallel EVM implementation to date.
+For fully parallelizable transactions, Grevm is **4.13×** faster than sequential execution, running
+at **26.50 gigagas/s.** If we simulate real-world I/O latency of **100 μs**, it is **50.84×** faster
+than sequential execution, with **6.80 gigagas/s** throughput. This leap in performance is
+attributed to both the parallelized execution and the integration of asynchronous I/O
+operations—enabled by the parallelism—which further amplifies the speedup by efficiently overlapping
+I/O operations.
 
 ### Fully Parallelized State Root Framework
 
@@ -307,7 +248,7 @@ satisfactory, primarily due to the following reasons:
 2. **Block size:** The Parallelized State Root framework shows less effective performance with
    smaller blocks. Its benefits are more when the Write Set is substantial.
 
-Based on these insights, we have developed a **Fully Parallelized State Root Framework** that
+Based on these insights, we are developing a **Fully Parallelized State Root Framework** that
 optimizes Merkle Root generation for both large and small blocks. By enabling parallel processing at
 both the multiple Storage Tree level and within individual Storage Trees, and by extending the
 Merkle Tree primitives, this framework can effectively reduce the time for state commitment.
